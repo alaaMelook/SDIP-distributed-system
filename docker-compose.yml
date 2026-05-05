@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-common-env: &common-env
   NODE_ENV: production
   JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
