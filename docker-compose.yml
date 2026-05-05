@@ -19,9 +19,9 @@ services:
       document-service:
         condition: service_healthy
       ai-service:
-        condition: service_healthy
+        condition: service_started
       search-service:
-        condition: service_healthy
+        condition: service_started
     networks:
       - sdip-external
       - sdip-internal
@@ -31,6 +31,8 @@ services:
   auth-service:
     build: ./services/auth
     container_name: sdip-auth
+    ports:
+      - "3001:3001"
     environment:
       <<: *common-env
       PORT: 3001
@@ -55,6 +57,7 @@ services:
       - oauth_google
       - oauth_github
     networks:
+      - sdip-external
       - sdip-internal
       - sdip-data
     depends_on:
@@ -74,6 +77,8 @@ services:
   document-service:
     build: ./services/document
     container_name: sdip-document
+    ports:
+      - "3002:3002"
     environment:
       <<: *common-env
       PORT: 3002
@@ -94,6 +99,7 @@ services:
       - db_doc_password
       - aes_encryption_key
     networks:
+      - sdip-external
       - sdip-internal
       - sdip-data
     depends_on:
@@ -225,6 +231,8 @@ services:
   audit-service:
     build: ./services/audit
     container_name: sdip-audit
+    ports:
+      - "3006:3006"
     environment:
       <<: *common-env
       PORT: 3006
@@ -238,6 +246,7 @@ services:
       - jwt_public_key
       - db_audit_password
     networks:
+      - sdip-external
       - sdip-internal
       - sdip-data
     depends_on:

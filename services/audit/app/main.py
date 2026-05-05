@@ -14,6 +14,9 @@ from datetime import datetime
 import asyncpg
 import aio_pika
 from fastapi import FastAPI, Depends, HTTPException, Request, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from jose import jwt as jose_jwt, JWTError
 
@@ -95,6 +98,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SDIP Audit Service", lifespan=lifespan)
 
+# CORS — allow dashboard to call auth service
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve dashboard static files
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 # ─── Auth Dependency ─────────────────────────────
 async def get_current_user(request: Request) -> dict:
     auth = request.headers.get("Authorization", "")
@@ -117,6 +134,14 @@ def require_admin(user: dict = Depends(get_current_user)):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "audit-service"}
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the monitoring dashboard."""
+    html_path = STATIC_DIR / "dashboard.html"
+    if html_path.exists():
+        return FileResponse(str(html_path), media_type="text/html")
+    raise HTTPException(404, "Dashboard not found")
 
 @app.get("/audit/logs")
 async def get_logs(

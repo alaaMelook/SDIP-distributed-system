@@ -51,6 +51,15 @@ MAGIC_BYTES = {
     b"PK\x03\x04": ".docx",
 }
 
+# Dangerous file signatures that should ALWAYS be rejected
+BLOCKED_MAGIC_BYTES = [
+    b"\x4d\x5a",           # MZ — Windows PE executable (.exe, .dll)
+    b"\x7fELF",            # ELF — Linux executable
+    b"\xfe\xed\xfa",       # Mach-O — macOS executable
+    b"\xca\xfe\xba\xbe",   # Java class / Mach-O fat binary
+    b"#!/",                 # Shell script (shebang)
+]
+
 # ─── App Lifespan ────────────────────────────────
 db_pool = None
 rabbit_connection = None
@@ -147,7 +156,12 @@ def validate_file(filename: str, content: bytes) -> str:
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(413, f"File too large. Maximum: {MAX_UPLOAD_SIZE // (1024*1024)} MB")
 
-    # Magic bytes check
+    # Blocked magic bytes check (dangerous file types)
+    for blocked in BLOCKED_MAGIC_BYTES:
+        if content[:len(blocked)] == blocked:
+            raise HTTPException(422, "File contains a dangerous executable signature — upload rejected")
+
+    # Magic bytes mismatch check
     for magic, expected_ext in MAGIC_BYTES.items():
         if content[:len(magic)] == magic and ext != expected_ext:
             raise HTTPException(422, "File content does not match extension (possible disguised file)")

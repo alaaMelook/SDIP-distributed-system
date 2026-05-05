@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDIP — Security Monitoring Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0f1117;
+            --bg-secondary: #1a1d2e;
+            --bg-card: #1e2235;
+            --border: #2a2f45;
+            --text-primary: #e4e6f0;
+            --text-secondary: #8b8fa3;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --accent-cyan: #06b6d4;
+            --glow-blue: rgba(59,130,246,0.15);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* ─── Header ─────────────── */
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary), #151829);
+            border-bottom: 1px solid var(--border);
+            padding: 1.2rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-left { display:flex; align-items:center; gap:1rem; }
+        .logo { font-size:1.5rem; font-weight:700; background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+        .header-badge { font-size:.7rem; padding:.25rem .6rem; background:var(--accent-green); color:#000; border-radius:20px; font-weight:600; animation:pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+        .header-right { display:flex; align-items:center; gap:1rem; }
+        .refresh-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); padding:.5rem 1rem; border-radius:8px; cursor:pointer; font-size:.85rem; transition:all .2s; }
+        .refresh-btn:hover { background:var(--accent-blue); border-color:var(--accent-blue); }
+        .last-update { font-size:.75rem; color:var(--text-secondary); }
+
+        /* ─── Layout ─────────────── */
+        .container { max-width:1400px; margin:0 auto; padding:1.5rem 2rem; }
+
+        /* ─── Stats Grid ─────────── */
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform .2s, box-shadow .2s;
+        }
+        .stat-card:hover { transform:translateY(-2px); box-shadow:0 8px 25px rgba(0,0,0,.3); }
+        .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:12px 12px 0 0; }
+        .stat-card:nth-child(1)::before { background:linear-gradient(90deg,var(--accent-blue),var(--accent-cyan)); }
+        .stat-card:nth-child(2)::before { background:linear-gradient(90deg,var(--accent-green),#34d399); }
+        .stat-card:nth-child(3)::before { background:linear-gradient(90deg,var(--accent-red),#f87171); }
+        .stat-card:nth-child(4)::before { background:linear-gradient(90deg,var(--accent-yellow),#fbbf24); }
+        .stat-card:nth-child(5)::before { background:linear-gradient(90deg,var(--accent-purple),#a78bfa); }
+        .stat-card:nth-child(6)::before { background:linear-gradient(90deg,var(--accent-cyan),#22d3ee); }
+        .stat-icon { font-size:1.8rem; margin-bottom:.5rem; }
+        .stat-value { font-size:2rem; font-weight:700; line-height:1; margin-bottom:.3rem; }
+        .stat-label { font-size:.8rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.5px; }
+
+        /* ─── Charts Section ─────── */
+        .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; }
+        @media(max-width:900px) { .charts-grid { grid-template-columns:1fr; } }
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem;
+        }
+        .chart-title { font-size:.9rem; font-weight:600; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+        .chart-title::before { content:''; width:8px; height:8px; border-radius:50%; }
+        .chart-card:nth-child(1) .chart-title::before { background:var(--accent-blue); }
+        .chart-card:nth-child(2) .chart-title::before { background:var(--accent-red); }
+
+        /* ─── Bar Chart ──────────── */
+        .bar-chart { display:flex; flex-direction:column; gap:.6rem; }
+        .bar-row { display:flex; align-items:center; gap:.8rem; }
+        .bar-label { font-size:.75rem; color:var(--text-secondary); min-width:130px; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bar-track { flex:1; height:22px; background:var(--bg-primary); border-radius:6px; overflow:hidden; position:relative; }
+        .bar-fill { height:100%; border-radius:6px; transition:width .8s cubic-bezier(.4,0,.2,1); display:flex; align-items:center; padding:0 8px; }
+        .bar-count { font-size:.7rem; font-weight:600; color:#fff; white-space:nowrap; }
+
+        /* ─── Events Table ───────── */
+        .table-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.2rem;
+            overflow-x: auto;
+        }
+        .table-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }
+        .table-title { font-size:.9rem; font-weight:600; }
+        table { width:100%; border-collapse:collapse; }
+        th { text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-secondary); padding:.6rem .8rem; border-bottom:1px solid var(--border); }
+        td { padding:.6rem .8rem; font-size:.8rem; border-bottom:1px solid rgba(42,47,69,.5); }
+        tr:hover td { background:rgba(59,130,246,.05); }
+        .severity { padding:.2rem .5rem; border-radius:4px; font-size:.7rem; font-weight:600; text-transform:uppercase; }
+        .severity.info { background:rgba(59,130,246,.15); color:var(--accent-blue); }
+        .severity.warning { background:rgba(245,158,11,.15); color:var(--accent-yellow); }
+        .severity.error { background:rgba(239,68,68,.15); color:var(--accent-red); }
+        .severity.critical { background:rgba(239,68,68,.25); color:#ff6b6b; }
+
+        /* ─── Login Form ─────────── */
+        .login-overlay {
+            position:fixed; inset:0; background:rgba(0,0,0,.8); display:flex;
+            align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(8px);
+        }
+        .login-box {
+            background:var(--bg-card); border:1px solid var(--border); border-radius:16px;
+            padding:2.5rem; width:100%; max-width:400px;
+        }
+        .login-box h2 { font-size:1.3rem; margin-bottom:.5rem; }
+        .login-box p { font-size:.85rem; color:var(--text-secondary); margin-bottom:1.5rem; }
+        .form-group { margin-bottom:1rem; }
+        .form-group label { display:block; font-size:.8rem; color:var(--text-secondary); margin-bottom:.4rem; }
+        .form-group input {
+            width:100%; padding:.7rem 1rem; background:var(--bg-primary); border:1px solid var(--border);
+            border-radius:8px; color:var(--text-primary); font-size:.9rem; outline:none; transition:border .2s;
+        }
+        .form-group input:focus { border-color:var(--accent-blue); }
+        .login-btn {
+            width:100%; padding:.8rem; background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));
+            border:none; border-radius:8px; color:#fff; font-size:.95rem; font-weight:600; cursor:pointer;
+            transition:opacity .2s; margin-top:.5rem;
+        }
+        .login-btn:hover { opacity:.9; }
+        .login-error { color:var(--accent-red); font-size:.8rem; margin-top:.8rem; display:none; }
+        .hidden { display:none !important; }
+
+        /* ─── Loading ────────────── */
+        .loading { text-align:center; padding:3rem; color:var(--text-secondary); }
+        .spinner { display:inline-block; width:30px; height:30px; border:3px solid var(--border); border-top-color:var(--accent-blue); border-radius:50%; animation:spin .8s linear infinite; margin-bottom:.5rem; }
+        @keyframes spin { to{transform:rotate(360deg)} }
+
+        /* ─── Services Status ────── */
+        .services-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.6rem; }
+        .svc-item { display:flex; align-items:center; gap:.5rem; padding:.5rem .8rem; background:var(--bg-primary); border-radius:8px; font-size:.8rem; }
+        .svc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+        .svc-dot.up { background:var(--accent-green); box-shadow:0 0 6px var(--accent-green); }
+        .svc-dot.down { background:var(--accent-red); box-shadow:0 0 6px var(--accent-red); }
+    </style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay">
+    <div class="login-box">
+        <h2>🔐 SDIP Dashboard</h2>
+        <p>Login with admin credentials to access the monitoring dashboard.</p>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="loginEmail" placeholder="admin@sdip.local">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="loginPassword" placeholder="••••••••">
+        </div>
+        <button class="login-btn" onclick="doLogin()">Sign In</button>
+        <div class="login-error" id="loginError">Invalid credentials. Admin access required.</div>
+    </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" class="hidden">
+    <div class="header">
+        <div class="header-left">
+            <span class="logo">SDIP Monitor</span>
+            <span class="header-badge">● LIVE</span>
+        </div>
+        <div class="header-right">
+            <span class="last-update" id="lastUpdate">—</span>
+            <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+            <button class="refresh-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Stats Cards -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-value" id="totalEvents">—</div><div class="stat-label">Total Events</div></div>
+            <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" id="successLogins">—</div><div class="stat-label">Successful Logins</div></div>
+            <div class="stat-card"><div class="stat-icon">❌</div><div class="stat-value" id="failedLogins">—</div><div class="stat-label">Failed Logins</div></div>
+            <div class="stat-card"><div class="stat-icon">📁</div><div class="stat-value" id="fileUploads">—</div><div class="stat-label">File Uploads</div></div>
+            <div class="stat-card"><div class="stat-icon">⚠️</div><div class="stat-value" id="securityAlerts">—</div><div class="stat-label">Security Alerts</div></div>
+            <div class="stat-card"><div class="stat-icon">🛡️</div><div class="stat-value" id="unauthorizedAttempts">—</div><div class="stat-label">Unauthorized Attempts</div></div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-title">Events by Action (Last 24h)</div>
+                <div class="bar-chart" id="actionChart"><div class="loading"><div class="spinner"></div><br>Loading...</div></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Events by Severity</div>
+                <div class="bar-chart" id="severityChart"><div class="loading"><div class="spinner"></div><br>Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Services Status -->
+        <div class="chart-card" style="margin-bottom:1rem;">
+            <div class="chart-title">Service Health</div>
+            <div class="services-grid" id="servicesGrid"></div>
+        </div>
+
+        <!-- Recent Events Table -->
+        <div class="table-card">
+            <div class="table-header">
+                <span class="table-title">Recent Security Events</span>
+            </div>
+            <table>
+                <thead><tr><th>Time</th><th>Action</th><th>User</th><th>Severity</th><th>IP</th><th>Details</th></tr></thead>
+                <tbody id="eventsTable"><tr><td colspan="6" class="loading"><div class="spinner"></div><br>Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+const AUTH_URL = '/auth';
+const AUDIT_URL = '/audit';
+
+// Detect base URLs based on how dashboard is accessed
+let authBase = window.location.port === '3006'
+    ? 'http://localhost:3001' : '';
+let auditBase = window.location.port === '3006'
+    ? 'http://localhost:3006' : '';
+
+let token = localStorage.getItem('sdip_token') || '';
+let userRole = '';
+
+// ─── Login ──────────────────────────
+async function doLogin() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+
+    try {
+        const r = await fetch(`${authBase}/auth/login`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email, password})
+        });
+        const data = await r.json();
+        if (r.ok && data.access_token) {
+            // Check role
+            const payload = JSON.parse(atob(data.access_token.split('.')[1]));
+            if (payload.role !== 'admin') {
+                errEl.textContent = 'Admin access required. Your role: ' + payload.role;
+                errEl.style.display = 'block';
+                return;
+            }
+            token = data.access_token;
+            userRole = payload.role;
+            localStorage.setItem('sdip_token', token);
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            refreshAll();
+        } else {
+            errEl.textContent = data.error?.message || 'Login failed';
+            errEl.style.display = 'block';
+        }
+    } catch(e) {
+        errEl.textContent = 'Connection error: ' + e.message;
+        errEl.style.display = 'block';
+    }
+}
+
+function logout() {
+    localStorage.removeItem('sdip_token');
+    token = '';
+    document.getElementById('loginOverlay').classList.remove('hidden');
+    document.getElementById('dashboard').classList.add('hidden');
+}
+
+// Check existing token on load
+async function checkToken() {
+    if (!token) return;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp * 1000 < Date.now() || payload.role !== 'admin') {
+            logout(); return;
+        }
+        document.getElementById('loginOverlay').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        refreshAll();
+    } catch { logout(); }
+}
+
+// ─── API Helpers ────────────────────
+async function apiFetch(url) {
+    const r = await fetch(url, { headers: {'Authorization': `Bearer ${token}`} });
+    if (r.status === 401 || r.status === 403) { logout(); throw new Error('Unauthorized'); }
+    return r.json();
+}
+
+// ─── Refresh All ────────────────────
+async function refreshAll() {
+    document.getElementById('lastUpdate').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+    await Promise.allSettled([loadStats(), loadEvents(), checkServices()]);
+}
+
+// ─── Stats ──────────────────────────
+async function loadStats() {
+    try {
+        const data = await apiFetch(`${auditBase}/audit/stats?period=day`);
+        const stats = data.stats || [];
+
+        document.getElementById('totalEvents').textContent = (data.total_events || 0).toLocaleString();
+
+        const get = (action) => stats.filter(s => s.action === action).reduce((a,s) => a + Number(s.count), 0);
+        const getSev = (sev) => stats.filter(s => s.severity === sev).reduce((a,s) => a + Number(s.count), 0);
+
+        document.getElementById('successLogins').textContent = get('auth.login_success');
+        document.getElementById('failedLogins').textContent = get('auth.login_failed');
+        document.getElementById('fileUploads').textContent = get('document.upload');
+        document.getElementById('securityAlerts').textContent = getSev('warning') + getSev('critical');
+        document.getElementById('unauthorizedAttempts').textContent = get('security.unauthorized_access') + get('security.invalid_token');
+
+        // Action chart
+        const actionMap = {};
+        stats.forEach(s => { actionMap[s.action] = (actionMap[s.action]||0) + Number(s.count); });
+        const sorted = Object.entries(actionMap).sort((a,b) => b[1]-a[1]).slice(0,8);
+        const maxCount = Math.max(...sorted.map(s=>s[1]), 1);
+        const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899'];
+
+        document.getElementById('actionChart').innerHTML = sorted.length === 0
+            ? '<div style="color:var(--text-secondary);text-align:center;padding:2rem">No events yet</div>'
+            : sorted.map(([action,count],i) => `
+                <div class="bar-row">
+                    <span class="bar-label">${action}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${(count/maxCount)*100}%;background:${colors[i%colors.length]}"><span class="bar-count">${count}</span></div></div>
+                </div>`).join('');
+
+        // Severity chart
+        const sevData = [
+            {label:'Info', count:getSev('info'), color:'var(--accent-blue)'},
+            {label:'Warning', count:getSev('warning'), color:'var(--accent-yellow)'},
+            {label:'Error', count:getSev('error'), color:'var(--accent-red)'},
+            {label:'Critical', count:getSev('critical'), color:'#ff6b6b'},
+        ];
+        const sevMax = Math.max(...sevData.map(s=>s.count),1);
+        document.getElementById('severityChart').innerHTML = sevData.map(s => `
+            <div class="bar-row">
+                <span class="bar-label">${s.label}</span>
+                <div class="bar-track"><div class="bar-fill" style="width:${(s.count/sevMax)*100}%;background:${s.color}"><span class="bar-count">${s.count}</span></div></div>
+            </div>`).join('');
+
+    } catch(e) { console.error('Stats error:', e); }
+}
+
+// ─── Recent Events ──────────────────
+async function loadEvents() {
+    try {
+        const data = await apiFetch(`${auditBase}/audit/logs?limit=20`);
+        const tbody = document.getElementById('eventsTable');
+        if (!data.logs || data.logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary)">No events recorded yet</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.logs.map(log => {
+            const time = new Date(log.timestamp).toLocaleString();
+            const userId = log.user_id ? log.user_id.substring(0,8) + '...' : '—';
+            const details = log.details ? (typeof log.details === 'string' ? log.details : JSON.stringify(log.details)).substring(0,50) : '—';
+            return `<tr>
+                <td>${time}</td>
+                <td>${log.action}</td>
+                <td>${userId}</td>
+                <td><span class="severity ${log.severity}">${log.severity}</span></td>
+                <td>${log.ip_address || '—'}</td>
+                <td>${details}</td>
+            </tr>`;
+        }).join('');
+    } catch(e) { console.error('Events error:', e); }
+}
+
+// ─── Services Health ────────────────
+async function checkServices() {
+    const services = [
+        {name:'Auth Service', url:'http://localhost:3001/health'},
+        {name:'Document Service', url:'http://localhost:3002/health'},
+        {name:'Audit Service', url:'http://localhost:3006/health'},
+        {name:'AI Service', url:'http://localhost:3003/health'},
+        {name:'Search Service', url:'http://localhost:3004/health'},
+    ];
+    const grid = document.getElementById('servicesGrid');
+    const results = await Promise.allSettled(
+        services.map(s => fetch(s.url, {signal: AbortSignal.timeout(3000)}).then(r => r.ok))
+    );
+    grid.innerHTML = services.map((svc, i) => {
+        const up = results[i].status === 'fulfilled' && results[i].value;
+        return `<div class="svc-item"><span class="svc-dot ${up?'up':'down'}"></span>${svc.name}</div>`;
+    }).join('');
+}
+
+// ─── Init ───────────────────────────
+document.getElementById('loginPassword').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+checkToken();
+// Auto-refresh every 30s
+setInterval(() => { if(token) refreshAll(); }, 30000);
+</script>
+</body>
+</html>
