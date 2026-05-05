@@ -37,7 +37,7 @@ function generateTokens(user, privateKey) {
   const accessToken = jwt.sign(
     { sub: user.id, role: user.role, email: user.email },
     privateKey,
-    { algorithm: privateKey.includes('RSA') ? 'RS256' : 'HS256', expiresIn: '15m', issuer: 'sdip-auth', audience: 'sdip-services' }
+    { algorithm: privateKey.includes('PRIVATE KEY') ? 'RS256' : 'HS256', expiresIn: '15m', issuer: 'sdip-auth', audience: 'sdip-services' }
   );
   const refreshToken = crypto.randomBytes(64).toString('hex');
   return { accessToken, refreshToken };
