@@ -17,24 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from minio import Minio
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# ─── Configuration ───────────────────────────────
-DB_DSN = f"postgresql://{os.getenv('DB_USER', 'doc_svc')}:{_read_secret('DB_PASSWORD_FILE')}@{os.getenv('DB_HOST', 'localhost')}:{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'sdip_docs')}"
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "sdip-documents")
-MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 52428800))  # 50 MB
-
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
-ALLOWED_MIME_TYPES = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".txt": "text/plain",
-    ".md": "text/plain",
-}
-MAGIC_BYTES = {
-    b"%PDF": ".pdf",
-    b"PK\x03\x04": ".docx",
-}
-
+# ─── Helpers ─────────────────────────────────────
 def _read_secret(env_var: str) -> str:
     path = os.getenv(env_var, "")
     if path and Path(path).exists():
@@ -50,6 +33,23 @@ def _get_jwt_public_key() -> str:
     if path and Path(path).exists():
         return Path(path).read_text()
     return "dev-secret-key"
+
+# ─── Configuration ───────────────────────────────
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "sdip-documents")
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 52428800))  # 50 MB
+
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+ALLOWED_MIME_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt": "text/plain",
+    ".md": "text/plain",
+}
+MAGIC_BYTES = {
+    b"%PDF": ".pdf",
+    b"PK\x03\x04": ".docx",
+}
 
 # ─── App Lifespan ────────────────────────────────
 db_pool = None

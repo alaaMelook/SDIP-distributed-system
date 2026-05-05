@@ -265,6 +265,9 @@ services:
       - ./db/init:/docker-entrypoint-initdb.d:ro
     secrets:
       - db_root_password
+      - db_auth_password
+      - db_doc_password
+      - db_audit_password
     networks:
       - sdip-data
     restart: unless-stopped
