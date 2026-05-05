@@ -1,0 +1,353 @@
+version: "3.9"
+
+x-common-env: &common-env
+  NODE_ENV: production
+  JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+
+services:
+  # ─── API GATEWAY ──────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sdip-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      document-service:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+    networks:
+      - sdip-external
+      - sdip-internal
+    restart: unless-stopped
+
+  # ─── AUTH SERVICE ─────────────────────────────
+  auth-service:
+    build: ./services/auth
+    container_name: sdip-auth
+    environment:
+      <<: *common-env
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_auth
+      DB_USER: auth_svc
+      DB_PASSWORD_FILE: /run/secrets/db_auth_password
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
+      RABBITMQ_URL: amqp://sdip:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID}
+      OAUTH_GOOGLE_CLIENT_SECRET_FILE: /run/secrets/oauth_google
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID}
+      OAUTH_GITHUB_CLIENT_SECRET_FILE: /run/secrets/oauth_github
+      BCRYPT_ROUNDS: "12"
+      ACCESS_TOKEN_EXPIRY: "900"
+      REFRESH_TOKEN_EXPIRY_DAYS: "7"
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
+      - db_auth_password
+      - oauth_google
+      - oauth_github
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => { process.exit(r.statusCode === 200 ? 0 : 1) })"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ─── DOCUMENT SERVICE ────────────────────────
+  document-service:
+    build: ./services/document
+    container_name: sdip-document
+    environment:
+      <<: *common-env
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_docs
+      DB_USER: doc_svc
+      DB_PASSWORD_FILE: /run/secrets/db_doc_password
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: sdip-admin
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: sdip-documents
+      AES_KEY_FILE: /run/secrets/aes_encryption_key
+      RABBITMQ_URL: amqp://sdip:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      MAX_UPLOAD_SIZE: "52428800"
+    secrets:
+      - jwt_public_key
+      - db_doc_password
+      - aes_encryption_key
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ─── AI SERVICE ──────────────────────────────
+  ai-service:
+    build: ./services/ai
+    container_name: sdip-ai
+    environment:
+      <<: *common-env
+      PORT: 3003
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_HOST: http://ollama:11434
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_docs
+      DB_USER: doc_svc
+      DB_PASSWORD_FILE: /run/secrets/db_doc_password
+      RABBITMQ_URL: amqp://sdip:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    secrets:
+      - jwt_public_key
+      - db_doc_password
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      qdrant:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ─── SEARCH SERVICE ─────────────────────────
+  search-service:
+    build: ./services/search
+    container_name: sdip-search
+    environment:
+      <<: *common-env
+      PORT: 3004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_docs
+      DB_USER: doc_svc
+      DB_PASSWORD_FILE: /run/secrets/db_doc_password
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+    secrets:
+      - jwt_public_key
+      - db_doc_password
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ─── WORKER SERVICE ─────────────────────────
+  worker-service:
+    build: ./services/worker
+    container_name: sdip-worker
+    environment:
+      <<: *common-env
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_docs
+      DB_USER: doc_svc
+      DB_PASSWORD_FILE: /run/secrets/db_doc_password
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: sdip-admin
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: sdip-documents
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      AES_KEY_FILE: /run/secrets/aes_encryption_key
+      RABBITMQ_URL: amqp://sdip:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+    secrets:
+      - jwt_public_key
+      - db_doc_password
+      - aes_encryption_key
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  # ─── AUDIT SERVICE ──────────────────────────
+  audit-service:
+    build: ./services/audit
+    container_name: sdip-audit
+    environment:
+      <<: *common-env
+      PORT: 3006
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: sdip_audit
+      DB_USER: audit_svc
+      DB_PASSWORD_FILE: /run/secrets/db_audit_password
+      RABBITMQ_URL: amqp://sdip:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    secrets:
+      - jwt_public_key
+      - db_audit_password
+    networks:
+      - sdip-internal
+      - sdip-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ─── INFRASTRUCTURE ─────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sdip-postgres
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_root_password
+      POSTGRES_USER: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    secrets:
+      - db_root_password
+    networks:
+      - sdip-data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: sdip-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: sdip
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - sdip-internal
+      - sdip-data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: sdip-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sdip-admin
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - sdip-data
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: sdip-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - sdip-data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rabbitmq_data:
+  minio_data:
+  qdrant_data:
+
+networks:
+  sdip-external:
+    driver: bridge
+  sdip-internal:
+    driver: bridge
+    internal: true
+  sdip-data:
+    driver: bridge
+    internal: true
+
+secrets:
+  jwt_private_key:
+    file: ./secrets/jwt_private.pem
+  jwt_public_key:
+    file: ./secrets/jwt_public.pem
+  db_root_password:
+    file: ./secrets/db_root_password.txt
+  db_auth_password:
+    file: ./secrets/db_auth_password.txt
+  db_doc_password:
+    file: ./secrets/db_doc_password.txt
+  db_audit_password:
+    file: ./secrets/db_audit_password.txt
+  aes_encryption_key:
+    file: ./secrets/aes_key.txt
+  oauth_google:
+    file: ./secrets/oauth_google.txt
+  oauth_github:
+    file: ./secrets/oauth_github.txt
