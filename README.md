@@ -62,57 +62,146 @@ A production-grade **secure distributed system** featuring AI-powered document a
 
 ---
 
-## 🚀 Quick Start
+## 🚀 How to Run (Step by Step)
 
 ### Prerequisites
-- Docker & Docker Compose v2
-- Git Bash (Windows) or Bash (Linux/Mac)
+- **Docker Desktop** installed and running
+- **Git Bash** (comes with Git for Windows) or any Bash shell
+- **Node.js** (for the frontend dev server, optional)
 
-### 1. Clone & Generate Secrets
+---
+
+### Step 1 — Clone the Repository
 ```bash
 git clone <repository-url>
 cd Project
+```
 
-# Generate cryptographic secrets (JWT keys, DB passwords, AES key)
+### Step 2 — Generate Secrets & TLS Certificates
+
+Open **Git Bash** (not PowerShell) and run:
+```bash
+# Generate JWT keys, database passwords, AES encryption key
 bash scripts/generate-secrets.sh
 
-# Generate self-signed TLS certificate
+# Generate self-signed TLS certificate for HTTPS
 bash scripts/generate-tls-cert.sh
 ```
 
-### 2. Configure Environment
+> **What this creates:**
+> - `secrets/jwt_private.pem` / `jwt_public.pem` — RSA key pair for JWT signing
+> - `secrets/db_*_password.txt` — Unique passwords for each database service role
+> - `secrets/aes_key.txt` — 256-bit AES encryption key for file encryption
+> - `nginx/ssl/sdip.crt` / `sdip.key` — Self-signed TLS certificate
+
+### Step 3 — Configure Environment
 ```bash
 cp .env.example .env
-# Edit .env with your OAuth credentials (optional)
 ```
+Edit `.env` if you want to add **OAuth credentials** (Google/GitHub). This is optional.
 
-### 3. Launch All Services
+### Step 4 — Launch All Services with Docker Compose
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Create Admin User
+> This starts **11 containers**: Nginx, Auth, Document, AI, Search, Worker, Audit, PostgreSQL, RabbitMQ, MinIO, Qdrant.
+> First run takes a few minutes to build images and download dependencies.
+
+### Step 5 — Wait for Services to be Healthy
+
+Check that all services are running:
+```powershell
+# PowerShell
+docker compose ps
+```
+Wait until the **STATUS** column shows `(healthy)` for auth, document, and audit services.
+
+### Step 6 — Create an Admin User
 ```bash
 docker compose exec auth-service node scripts/create-admin.js
 ```
+You will be asked for:
+- **Email**: e.g. `admin@sdip.local`
+- **Password**: e.g. `Admin@SDIP2024!` (must have 8+ chars, uppercase, lowercase, number, symbol)
+- **Display Name**: e.g. `System Admin`
 
-### 5. Access the Platform
+### Step 7 — Start the Frontend Dashboard
+Open a **new terminal** (PowerShell):
+```powershell
+npx -y http-server ./frontend -p 8080 -c-1 --cors
+```
 
+### Step 8 — Open in Browser
 | Interface | URL | Description |
 |-----------|-----|-------------|
-| **Frontend Dashboard** | `http://localhost:8080` | Web UI (served via `npx http-server frontend -p 8080`) |
-| **API Gateway** | `https://localhost` | Nginx HTTPS gateway |
-| **Auth API** | `http://localhost:3001` | Direct auth service access |
-| **Document API** | `http://localhost:3002` | Direct document service access |
-| **Audit API** | `http://localhost:3006` | Direct audit service access |
-| **RabbitMQ Dashboard** | `http://localhost:15672` | Message queue monitoring |
+| 🖥️ **Frontend Dashboard** | http://localhost:8080 | Login, upload docs, view audit logs |
+| 🔐 **API Gateway (HTTPS)** | https://localhost | Nginx gateway (accept self-signed cert warning) |
+| 🐰 **RabbitMQ Management** | http://localhost:15672 | Message queue dashboard |
 
-### 6. Verify System Health
+### Step 9 — Login
+Open http://localhost:8080 in your browser:
+1. Enter the **email** and **password** you created in Step 6
+2. Click **Sign In**
+3. You'll see the Dashboard with system stats, service health, and recent activity
+
+---
+
+### ⚡ Quick Command Summary (Copy & Paste)
+```bash
+# 1. Generate secrets (run in Git Bash)
+bash scripts/generate-secrets.sh
+bash scripts/generate-tls-cert.sh
+
+# 2. Start everything
+docker compose up -d --build
+
+# 3. Create admin user
+docker compose exec auth-service node scripts/create-admin.js
+
+# 4. Start frontend (new terminal)
+npx -y http-server ./frontend -p 8080 -c-1 --cors
+
+# 5. Open browser → http://localhost:8080
+```
+
+---
+
+### 🔍 Verify Services are Working
+
 ```powershell
-# PowerShell
-Invoke-RestMethod -Uri "http://localhost:3001/health"
-Invoke-RestMethod -Uri "http://localhost:3002/health"
-Invoke-RestMethod -Uri "http://localhost:3006/health"
+# Check service health (PowerShell)
+Invoke-RestMethod -Uri "http://localhost:3001/health"   # Auth
+Invoke-RestMethod -Uri "http://localhost:3002/health"   # Document
+Invoke-RestMethod -Uri "http://localhost:3006/health"   # Audit
+```
+
+### 📋 Example API Usage (PowerShell)
+
+```powershell
+# Login and get JWT token
+$response = Invoke-RestMethod -Uri "http://localhost:3001/auth/login" `
+  -Method POST -ContentType "application/json" `
+  -Body '{"email":"admin@sdip.local","password":"Admin@SDIP2024!"}'
+$token = $response.access_token
+
+# View your profile
+Invoke-RestMethod -Uri "http://localhost:3001/auth/me" `
+  -Headers @{Authorization="Bearer $token"}
+
+# List your documents
+Invoke-RestMethod -Uri "http://localhost:3002/documents/" `
+  -Headers @{Authorization="Bearer $token"}
+
+# View audit logs (admin only)
+Invoke-RestMethod -Uri "http://localhost:3006/audit/logs" `
+  -Headers @{Authorization="Bearer $token"}
+```
+
+### 🛑 Stop All Services
+```bash
+docker compose down        # Stop containers
+docker compose down -v     # Stop and remove data volumes (full reset)
 ```
 
 ---
