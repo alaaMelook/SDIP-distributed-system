@@ -1,143 +1,347 @@
 # 🔐 Secure Document Intelligence Platform (SDIP)
 
-A production-grade secure distributed system featuring AI-powered document analysis, encrypted storage, and comprehensive audit logging.
+A production-grade **secure distributed system** featuring AI-powered document analysis (RAG), AES-256 encryption at rest, comprehensive audit logging, and role-based access control — built with 11 microservices orchestrated via Docker Compose.
 
-## Architecture Overview
+---
+
+## 📐 Architecture Overview
 
 ```
-Client → Nginx (HTTPS/TLS 1.3) → Microservices → RabbitMQ → Workers
-                                       ↓
-                              PostgreSQL · MinIO · Qdrant
+                          ┌────────────────┐
+                          │   Web Client   │
+                          └───────┬────────┘
+                                  │ HTTPS (TLS 1.3)
+                          ┌───────▼────────┐
+                          │  Nginx Gateway │  ← Rate Limiting · Security Headers · HSTS
+                          └──┬──┬──┬──┬──┬─┘
+            ┌────────────────┘  │  │  │  └────────────────┐
+            ▼                   ▼  │  ▼                   ▼
+     ┌──────────┐    ┌──────────┐  │ ┌──────────┐  ┌──────────┐
+     │   Auth   │    │ Document │  │ │  Search  │  │  Audit   │
+     │ Service  │    │ Service  │  │ │ Service  │  │ Service  │
+     └────┬─────┘    └────┬─────┘  │ └────┬─────┘  └────┬─────┘
+          │               │        │      │              │
+          │          ┌────▼────┐   │ ┌────▼────┐         │
+          │          │  MinIO  │   │ │ Qdrant  │         │
+          │          │ Storage │   │ │ VectorDB│         │
+          │          └─────────┘   │ └─────────┘         │
+          │                   ┌────▼─────┐               │
+          │                   │    AI    │               │
+          │                   │ Service  │               │
+          │                   └──────────┘               │
+          │          ┌─────────────────┐                 │
+          └──────────►    RabbitMQ     ◄─────────────────┘
+                     └───────┬─────────┘
+                             │
+                      ┌──────▼───────┐
+                      │   Worker     │  ← Async Processing · Embedding Generation
+                      │   Service    │
+                      └──────────────┘
+                             │
+                      ┌──────▼───────┐
+                      │  PostgreSQL  │
+                      │     16       │
+                      └──────────────┘
 ```
 
-| Service | Technology | Port | Purpose |
-|---------|-----------|------|---------|
-| **API Gateway** | Nginx | 443 | SSL termination, rate limiting, routing |
-| **Auth Service** | Node.js/Express | 3001 | JWT auth, OAuth, RBAC |
-| **Document Service** | Python/FastAPI | 3002 | File upload, AES-256 encryption, integrity |
-| **AI Service** | Python/FastAPI | 3003 | RAG pipeline, embeddings, LLM inference |
-| **Search Service** | Python/FastAPI | 3004 | Full-text + semantic + hybrid search |
-| **Worker Service** | Python | 3005 | Async document processing & embedding |
-| **Audit Service** | Python/FastAPI | 3006 | Centralized audit logging |
-| **PostgreSQL** | PostgreSQL 16 | 5432 | Primary database |
-| **RabbitMQ** | RabbitMQ 3.13 | 5672 | Message queue |
-| **MinIO** | MinIO | 9000 | S3-compatible object storage |
-| **Qdrant** | Qdrant | 6333 | Vector database |
+### Services
 
-## Quick Start
+| # | Service | Technology | Port | Purpose |
+|---|---------|-----------|------|---------|
+| 1 | **API Gateway** | Nginx 1.27 | 443/80 | HTTPS termination, rate limiting, routing, security headers |
+| 2 | **Auth Service** | Node.js / Express | 3001 | JWT (RS256), OAuth (Google/GitHub), RBAC, brute-force protection |
+| 3 | **Document Service** | Python / FastAPI | 3002 | Secure file upload, AES-256-GCM encryption, integrity verification |
+| 4 | **AI Service** | Python / FastAPI | 3003 | RAG pipeline, embeddings (MiniLM), LLM inference (Ollama/OpenAI) |
+| 5 | **Search Service** | Python / FastAPI | 3004 | Full-text + semantic + hybrid search (RRF fusion) |
+| 6 | **Worker Service** | Python | — | Async document processing, text extraction, embedding generation |
+| 7 | **Audit Service** | Python / FastAPI | 3006 | Centralized audit logging, security event monitoring, admin dashboard |
+| 8 | **PostgreSQL** | PostgreSQL 16 | 5432 | Primary database (3 isolated databases: auth, docs, audit) |
+| 9 | **RabbitMQ** | RabbitMQ 3.13 | 5672 | Message queue with dead-letter exchange (DLX) |
+| 10 | **MinIO** | MinIO | 9000 | S3-compatible encrypted object storage |
+| 11 | **Qdrant** | Qdrant 1.9 | 6333 | Vector database for semantic search |
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose v2
-- OpenSSL (for secret generation)
-- Bash shell (Git Bash on Windows)
+- Git Bash (Windows) or Bash (Linux/Mac)
 
-### 1. Generate Secrets & TLS Certificates
+### 1. Clone & Generate Secrets
 ```bash
+git clone <repository-url>
+cd Project
+
+# Generate cryptographic secrets (JWT keys, DB passwords, AES key)
 bash scripts/generate-secrets.sh
+
+# Generate self-signed TLS certificate
 bash scripts/generate-tls-cert.sh
 ```
 
-### 2. Launch All Services
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your OAuth credentials (optional)
+```
+
+### 3. Launch All Services
 ```bash
 docker compose up -d --build
 ```
 
-### 3. Create Admin User
+### 4. Create Admin User
 ```bash
 docker compose exec auth-service node scripts/create-admin.js
 ```
 
-### 4. Verify
-```bash
-docker compose ps                          # All services healthy
-curl -k https://localhost/health           # Nginx responding
-curl -k https://localhost/api/auth/me      # Auth check (will return 401)
+### 5. Access the Platform
+
+| Interface | URL | Description |
+|-----------|-----|-------------|
+| **Frontend Dashboard** | `http://localhost:8080` | Web UI (served via `npx http-server frontend -p 8080`) |
+| **API Gateway** | `https://localhost` | Nginx HTTPS gateway |
+| **Auth API** | `http://localhost:3001` | Direct auth service access |
+| **Document API** | `http://localhost:3002` | Direct document service access |
+| **Audit API** | `http://localhost:3006` | Direct audit service access |
+| **RabbitMQ Dashboard** | `http://localhost:15672` | Message queue monitoring |
+
+### 6. Verify System Health
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:3001/health"
+Invoke-RestMethod -Uri "http://localhost:3002/health"
+Invoke-RestMethod -Uri "http://localhost:3006/health"
 ```
 
-## Security Features
+---
 
-| Feature | Implementation |
-|---------|---------------|
-| Authentication | JWT (RS256, 15-min access tokens) |
-| Password Hashing | bcrypt (cost factor 12) |
-| OAuth SSO | Google, GitHub via Passport.js |
-| RBAC | Admin/User roles enforced on every route |
-| HTTPS | TLS 1.2/1.3, HSTS, security headers |
-| Rate Limiting | Nginx zones (10r/s global, 5r/m auth) |
-| File Encryption | AES-256-GCM at rest |
-| Integrity | SHA-256 hash verification on download |
-| Input Validation | Pydantic models + express-validator |
-| File Validation | Extension allowlist + magic byte verification |
-| Secrets Management | Docker secrets (file-based) |
-| Network Isolation | 3 Docker networks (external/internal/data) |
-| DB Security | Least-privilege roles per service |
-| Audit Trail | Tamper-evident hash chain on all events |
-| Brute-Force Protection | Account lockout after 5 failed attempts |
+## 🔒 Security Features — 20/20 Requirements
 
-## Running Security Tests
+### Authentication & Authorization
 
+| # | Requirement | Implementation |
+|---|-------------|---------------|
+| 1 | **Authentication** | JWT with RS256 algorithm, 15-min access tokens, 7-day refresh tokens |
+| 2 | **Password Hashing** | bcrypt with cost factor 12, never logged in plaintext |
+| 3 | **RBAC** | Admin/User roles enforced via middleware on every route |
+| 4 | **OAuth SSO** | Google & GitHub via Passport.js, profile linking, JWT issued after OAuth |
+
+### Network & API Security
+
+| # | Requirement | Implementation |
+|---|-------------|---------------|
+| 5 | **API Gateway** | Nginx routing to all services, internal services not publicly exposed |
+| 6 | **HTTPS** | TLS 1.2/1.3, HSTS, HTTP→HTTPS redirect, self-signed certs |
+| 7 | **Rate Limiting** | Nginx zones: 10r/s global, 5r/min auth, 2r/s upload |
+| 8 | **Input Validation** | express-validator (Node.js), Pydantic models (Python) |
+
+### Data Security
+
+| # | Requirement | Implementation |
+|---|-------------|---------------|
+| 9 | **Secure File Upload** | Extension whitelist (.pdf/.docx/.txt/.md), magic byte verification, blocked executables (.exe/.sh/.bat), 50MB size limit |
+| 10 | **File Encryption** | AES-256-GCM encryption at rest in MinIO, per-file IV (nonce) |
+| 11 | **Integrity Verification** | SHA-256 hash computed on upload, verified on every download |
+| 12 | **Service-to-Service Auth** | All services verify JWT public key, no blind trust between services |
+| 13 | **Secrets Management** | Docker secrets (file-based), .env for non-sensitive config, `.gitignore` configured |
+| 14 | **Database Security** | 3 isolated databases, least-privilege roles per service, hashed passwords, audit tables |
+
+### Infrastructure & Observability
+
+| # | Requirement | Implementation |
+|---|-------------|---------------|
+| 15 | **Message Queue** | RabbitMQ: document events → async processing + embedding generation |
+| 16 | **Queue Security** | Custom user `sdip` with strong password, dead-letter exchange for failures |
+| 17 | **Audit Trail** | Tamper-evident hash chain, logs: login/logout/upload/download/unauthorized access/admin actions |
+| 18 | **Monitoring Dashboard** | Frontend: system stats, service health, recent activity, audit viewer |
+| 19 | **Error Handling** | Safe error messages, no stack traces exposed, internal-only logging |
+| 20 | **Docker Compose** | Full orchestration with 11 containers, 3 isolated networks, health checks |
+
+---
+
+## 🛡️ Attack Simulation Tests
+
+Run the automated security test suite:
 ```bash
 pip install pytest requests
-pytest tests/security/ -v
+python -m pytest tests/security/ -v --disable-warnings
 ```
 
-## Project Structure
+### Test Coverage
+
+| Attack | Test | Expected Result |
+|--------|------|-----------------|
+| **Brute Force** | 5+ failed logins | Account locked for 15 minutes (HTTP 423) |
+| **Token Tampering** | Modified JWT signature | Rejected with HTTP 401 |
+| **Missing Token** | No Authorization header | Rejected with HTTP 401 |
+| **Cross-User Access** | User B accesses User A's document | Rejected with HTTP 403 |
+| **Malicious Upload** | .exe disguised as .pdf | Rejected with HTTP 422 |
+| **Forbidden Extension** | .exe, .bat, .sh files | Rejected with HTTP 422 |
+| **Oversized File** | >50MB upload | Rejected with HTTP 413 |
+| **SQL Injection** | `'; DROP TABLE users; --` | Treated as literal string, no SQL error |
+| **RBAC Bypass** | User tries admin endpoints | Rejected with HTTP 403 |
+| **Rate Limiting** | Rapid auth requests via Nginx | Blocked with HTTP 429 |
+
+---
+
+## 📁 Project Structure
 
 ```
 Project/
-├── docker-compose.yml          # Complete orchestration
-├── .env.example                # Environment template
+├── docker-compose.yml              # Complete orchestration (11 services)
+├── .env.example                    # Environment template
+├── .gitignore                      # Secrets/certs excluded
+│
 ├── nginx/
-│   ├── nginx.conf              # Reverse proxy + rate limiting + TLS
-│   └── ssl/                    # TLS certificates (generated)
+│   ├── nginx.conf                  # API Gateway: routing + TLS + rate limiting + headers
+│   └── ssl/                        # TLS certificates (generated)
+│
 ├── db/
-│   └── init/01-init.sql        # Database schemas + roles
+│   └── init/01-init.sh             # Database schemas + least-privilege roles
+│
 ├── scripts/
-│   ├── generate-secrets.sh     # Secret key generator
-│   └── generate-tls-cert.sh    # Self-signed cert generator
+│   ├── generate-secrets.sh         # Generates JWT keys, DB passwords, AES key, OAuth placeholders
+│   └── generate-tls-cert.sh        # Self-signed TLS certificate generator
+│
 ├── services/
-│   ├── auth/                   # Node.js Auth Service
+│   ├── auth/                       # Node.js Auth Service
 │   │   ├── Dockerfile
 │   │   ├── package.json
-│   │   ├── scripts/create-admin.js
+│   │   ├── scripts/create-admin.js # Admin user setup script
 │   │   └── src/
-│   │       ├── index.js
-│   │       ├── routes/auth.js
-│   │       ├── routes/users.js
+│   │       ├── index.js            # Express app, JWT keys, RabbitMQ
+│   │       ├── routes/auth.js      # Register, login, refresh, logout, me
+│   │       ├── routes/users.js     # Admin: list users, change roles
 │   │       └── middleware/
-│   │           ├── auth.js
-│   │           └── passport.js
-│   ├── document/               # Python Document Service
+│   │           ├── auth.js         # JWT verification + RBAC
+│   │           └── passport.js     # Google & GitHub OAuth strategies
+│   │
+│   ├── document/                   # Python Document Service
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   └── app/main.py
-│   ├── ai/                     # Python AI/RAG Service
+│   │   └── app/main.py            # Upload, download, delete, AES-256, SHA-256
+│   │
+│   ├── ai/                         # Python AI/RAG Service
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   └── app/main.py
-│   ├── search/                 # Python Search Service
+│   │   └── app/main.py            # RAG query, embedding, LLM inference
+│   │
+│   ├── search/                     # Python Search Service
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   └── app/main.py
-│   ├── worker/                 # Python Worker Service
+│   │   └── app/main.py            # Full-text + semantic + hybrid (RRF) search
+│   │
+│   ├── worker/                     # Python Worker Service
 │   │   ├── Dockerfile
 │   │   ├── requirements.txt
-│   │   └── app/worker.py
-│   └── audit/                  # Python Audit Service
+│   │   └── app/worker.py          # RabbitMQ consumer: text extraction + embedding
+│   │
+│   └── audit/                      # Python Audit Service
 │       ├── Dockerfile
 │       ├── requirements.txt
-│       └── app/main.py
+│       └── app/main.py            # Event consumer, query APIs, admin stats
+│
+├── frontend/                       # Web Dashboard
+│   ├── index.html                  # SPA: login, dashboard, documents, audit, users
+│   ├── styles.css                  # Dark theme design system
+│   └── app.js                     # API integration, auth, navigation
+│
 ├── tests/
-│   └── security/test_attacks.py  # Attack simulation tests
-├── secrets/                    # Generated secrets (gitignored)
-└── SDIP_Design_Sections_*.md   # Full design documentation
+│   └── security/test_attacks.py    # 10 attack simulation tests
+│
+├── secrets/                        # Generated secrets (gitignored)
+├── PROJECT_DOCUMENTATION.md        # Full technical documentation
+├── SDIP_Design_Sections_1_to_5.md  # Architecture & security design
+└── SDIP_Design_Sections_6_to_10.md # API specs, deployment, attack simulations
 ```
 
-## Design Documentation
+---
 
-- **Sections 1–5**: System Overview, Architecture, Microservices, Security, Database
-- **Sections 6–10**: Message Queues, API Spec, Docker Compose, Attack Simulations, Deployment
+## 🌐 API Quick Reference
+
+### Auth Service (`/auth`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/register` | — | Create new account |
+| POST | `/auth/login` | — | Login, get JWT tokens |
+| POST | `/auth/refresh` | — | Refresh access token |
+| POST | `/auth/logout` | Bearer | Revoke refresh token |
+| GET | `/auth/me` | Bearer | Get current user profile |
+| GET | `/auth/users` | Admin | List all users |
+| PUT | `/auth/users/:id/role` | Admin | Change user role |
+| GET | `/auth/oauth/google` | — | Initiate Google OAuth |
+| GET | `/auth/oauth/github` | — | Initiate GitHub OAuth |
+
+### Document Service (`/documents`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/documents/upload` | Bearer | Upload, validate, encrypt, store |
+| GET | `/documents/` | Bearer | List user's documents |
+| GET | `/documents/:id` | Bearer | Get document metadata |
+| GET | `/documents/:id/download` | Bearer | Decrypt & download (integrity verified) |
+| DELETE | `/documents/:id` | Bearer | Soft delete document |
+| GET | `/documents/admin/all` | Admin | List all documents |
+
+### AI Service (`/ai`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/ai/query` | Bearer | RAG: question → context retrieval → LLM answer |
+| POST | `/ai/embed/:id` | Bearer | Generate embeddings for a document |
+| DELETE | `/ai/vectors/:id` | Bearer | Remove document vectors |
+
+### Search Service (`/search`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/search/fulltext` | Bearer | PostgreSQL full-text search |
+| POST | `/search/semantic` | Bearer | Qdrant vector similarity search |
+| POST | `/search/hybrid` | Bearer | Reciprocal Rank Fusion (RRF) |
+
+### Audit Service (`/audit`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/audit/logs` | Admin | Query audit logs with filters |
+| GET | `/audit/logs/user/:id` | Admin | Logs for specific user |
+| GET | `/audit/security-events` | Admin | Security-only events |
+| GET | `/audit/stats` | Admin | Event statistics by period |
+
+---
+
+## 🔧 Network Isolation
+
+```
+┌─────────────────────────────────────────────────────┐
+│  sdip-external (bridge)                             │
+│  Nginx ↔ Auth ↔ Document ↔ Audit                   │
+├─────────────────────────────────────────────────────┤
+│  sdip-internal (internal)                           │
+│  All services ↔ RabbitMQ (no external access)       │
+├─────────────────────────────────────────────────────┤
+│  sdip-data (internal)                               │
+│  Services ↔ PostgreSQL ↔ MinIO ↔ Qdrant             │
+│  (no external access)                               │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📖 Design Documentation
+
+| Document | Contents |
+|----------|----------|
+| `SDIP_Design_Sections_1_to_5.md` | System overview, architecture, microservices, security, database design |
+| `SDIP_Design_Sections_6_to_10.md` | Message queues, API spec, Docker Compose, attack simulations, deployment |
+| `PROJECT_DOCUMENTATION.md` | Full technical project documentation |
+
+---
+
+## 👥 Team
+
+University Final Project — Secure Distributed System Design & Implementation
+
+---
 
 ## License
 
-University Final Project — For educational purposes.
+For educational purposes only.
