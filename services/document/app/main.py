@@ -13,6 +13,7 @@ import asyncpg
 import aio_pika
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from minio import Minio
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -110,6 +111,14 @@ async def lifespan(app: FastAPI):
         await rabbit_connection.close()
 
 app = FastAPI(title="SDIP Document Service", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ─── JWT Auth Dependency ─────────────────────────
 from jose import jwt as jose_jwt, JWTError
